@@ -1,6 +1,6 @@
 ---
-author: "Tan Zi Fung 24280806"
-title: ""
+author: "Tan Zi Fung"
+title: "Modeling Doctor Complaints with Zero-Inflated Negative Binomial Regression"
 output: html_document
 date: "2024-10-21"
 ---
