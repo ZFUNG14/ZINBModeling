@@ -1,0 +1,175 @@
+---
+author: "Tan Zi Fung 24280806"
+title: ""
+output: html_document
+date: "2024-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+CD <- read.table("compdat.txt", header = TRUE, sep = "\t")
+head(CD)
+str(CD)
+
+sum(duplicated(CD)) 
+
+CD$residency <- factor(CD$residency, levels = c("Y", "N"), labels = c("Yes", "No"))
+CD$gender <- factor(CD$gender, levels = c("M", "F"), labels = c("Male", "Female"))
+summary(CD)
+```
+## Graphical Data Exploration
+
+Boxplot that surround with Gender:
+```{r}
+par(mfrow = c(1,3))  
+boxplot(revenue ~ gender, data = CD, xlab = "Gender",ylab = "Hourly income (dollars)", col= c("skyblue","pink"), main = "Hourly Income vs Gender")
+
+boxplot(hours ~ gender, data = CD, xlab = "Gender",ylab = "Work duration in a year (hours)", col= c("skyblue","pink"), main = "Hours Worked vs Gender")
+
+boxplot(visits ~ gender, data = CD, xlab = "Gender",ylab = "Number of patient visits", col= c("skyblue","pink"), main = "Patient visits vs Gender")
+
+```
+Boxplot that surround with Doctor's residency status:
+
+```{r}
+par(mfrow = c(1,3))  
+boxplot(visits ~ residency, data = CD, xlab = "Residency Status",ylab = "Number of patient visits", col= c("darkblue","darkred"), main = "Patient visits vs Residency Status")
+
+boxplot(hours ~ residency, data = CD, xlab = "Residency Status",ylab = "Work duration in a year (hours)", col= c("darkblue","darkred"), main = "Hours Worked vs Residency Status")
+
+boxplot(revenue ~ residency, data = CD, xlab = "Residency Status",ylab = "Hourly income (dollars)", col= c("darkblue","darkred"), main = "Hourly income vs Residency Status")
+```
+
+Boxplot used in report:
+```{r}
+par(mfrow = c(1,4))  
+boxplot(revenue ~ gender, data = CD, xlab = "Gender",ylab = "Hourly income (dollars)", col= c("skyblue","pink"), main = "Revenue vs Gender")
+
+boxplot(hours ~ gender, data = CD, xlab = "Gender",ylab = "Work duration in a year (hours)", col= c("skyblue","pink"), main = "Hours vs Gender")
+
+boxplot(hours ~ residency, data = CD, xlab = "Residency Status",ylab = "Work duration in a year (hours)", col= c("darkblue","darkred"), main = "Hours vs Residency")
+
+boxplot(revenue ~ residency, data = CD, xlab = "Residency Status",ylab = "Hourly income (dollars)", col= c("darkblue","darkred"), main = "Revenue vs Residency")
+```
+geom_bar to show number of complaints vs (residency and gender)
+```{r}
+library(ggplot2)
+
+ggplot(CD, aes(x = residency, y = complaints, fill = gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Complaints by Residency and Gender", x = "Residency", y = "Number of Complaints")
+
+```
+
+
+## Model Fitting and Testing
+
+We first use Poisson distribution as the response variable is set to be the number of complaints doctor received in the previous year. Which specially specify a fixed interval. We also carried out dispersion test to further test if this data set is zero-inflated as the test's z-score and highly significant p-value indicate over dispersion—where the observed variance is much greater than what a standard Poisson model would predict.
+```{r}
+#install.packages("AER")
+library(AER)
+
+pm.model <- glm(complaints ~ visits + residency + gender + revenue + hours, family = poisson , data = CD )
+summary(model)
+dispersiontest(model)
+```
+dispersion test above have very low p value of 0.000228, indicating that true dispersion is greater than 1. We then display the number of complaints using table and histogram below to show the excessive zeros within the dataset. 
+
+```{r}
+#library(AER)
+table(CD$complaints)
+hist(CD$complaints, xlim= c(0,11), xlab = "Number of complaints in the previous years" , col = "skyblue")
+```
+
+```{r}
+rootogram(pm.model)
+```
+
+
+## Quasi- Poisson 
+
+```{r}
+qp.model <- glm(complaints ~ visits + residency + gender + revenue + hours, data = CD, family = quasipoisson) 
+summary(qp.model)
+```
+
+
+```{r}
+par(mfrow = c(1, 2))
+plot(residuals(qp.model, type = "pearson"), ylab = "Pearson residuals") 
+plot(residuals(qp.model, type = "pearson") ~ qp.model$fitted, xlab = "Fitted values",
+ylab = "Pearson residuals")
+mtext("Quasi-Poisson model", side = 3, line = -2, outer = TRUE)
+par(mfrow = c(1, 1))
+```
+## Negative Binomial
+
+```{r}
+nb.model <- glm.nb(complaints ~ visits + residency + gender + revenue + hours, data = CD) 
+summary(nb.model)
+```
+```{r}
+par(mfrow = c(1, 2))
+plot(residuals(nb.model, type = "pearson"), ylab = "Pearson residuals") 
+plot(residuals(nb.model, type = "pearson") ~ nb.model$fitted, xlab = "Fitted values", ylab = "Pearson residuals")
+mtext("Negative binomial model", side = 3, line = -2, outer = TRUE) 
+par(mfrow = c(1, 1))
+```
+```{r}
+rootogram(nb.model)
+```
+
+```{r}
+library(pscl)
+zip.model <- zeroinfl(complaints ~ visits + residency + gender + revenue + hours | residency + gender + revenue + hours, dist = "poisson", data = CD) 
+summary(zip.model)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+plot(residuals(zip.model, type = "pearson"), ylab = "Pearson Residuals")
+plot(residuals(zip.model, type = "pearson") ~ zip.model$fitted, xlab = "Fitted values", ylab = "Pearson residuals")
+mtext("Zero-inflated Poisson model", side = 3, line = -2, outer = TRUE) 
+par(mfrow = c(1, 1))
+```
+```{r}
+rootogram(zip.model)
+```
+
+##Zero-inflated negative binomial
+
+```{r}
+library(pscl)
+zipNB_model <- zeroinfl(complaints ~ visits + residency + gender + revenue + hours | visits + residency + gender + revenue + hours, data = CD, dist = "negbin", EM = TRUE) 
+summary(zipNB_model)
+```
+
+After appropriate interactions between variables in count and negative binomial model. Final model can be found below:
+
+```{r}
+zipNB_model2 <- zeroinfl(complaints ~ visits + gender + revenue + hours  + residency:gender| visits*revenue+hours*revenue  , data = CD, dist = "negbin", EM = TRUE)
+summary(zipNB_model2)
+```
+
+```{r}
+AIC(zipNB_model2)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+plot(residuals(zipNB_model2, type = "pearson"), ylab = "Pearson residuals") 
+plot(residuals(zipNB_model2, type = "pearson") ~ zip_model2$fitted, xlab = "Fitted values", ylab = "Pearson residuals")
+mtext("Zero-inflated negative binomial model", side = 3, line = -2, outer = TRUE) 
+par(mfrow = c(1, 1))
+```
+
+```{r}
+stepAIC(zipNB_model2)
+```
+
+
